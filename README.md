@@ -23,6 +23,6 @@ NOTE: install.sh installs some required libraries
 
 * Clone the repository
 * modify defaultPolicyName variable in createThing-Cert.py and run it
-      * python3 createThing-Cert.py
+      python3 createThing-Cert.py
 * modify line 29 in lab4_emulator_client_updated.py with your endpoint name and run it
-      * python3 lab4_emulator_client_updated.py
+      python3 lab4_emulator_client_updated.py
