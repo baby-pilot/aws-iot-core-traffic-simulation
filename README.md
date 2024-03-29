@@ -22,10 +22,7 @@ NOTE: install.sh installs some required libraries
 ## Getting Started
 
 * Clone the repository
-
-      git clone https://github.com/keivanK1/aws-create-thing-boto3.git
-* Run it
-
-      python createThing-Cert.py
-
-Enjoy:-)
+* modify defaultPolicyName variable in createThing-Cert.py and run it
+      * python3 createThing-Cert.py
+* modify line 29 in lab4_emulator_client_updated.py with your endpoint name and run it
+      * python3 lab4_emulator_client_updated.py
