@@ -17,6 +17,8 @@ This project will create a thing on AWS IoT platform using boto3 and python and 
 * Boto3, you can find more information about it [here](https://boto3.readthedocs.io/en/latest/guide/quickstart.html#installation)
 * Create a policy named `GGTest_Group_Core-policy` or change `defaultPolicyName` value in source code to your appropriate policy.
 
+NOTE: install.sh installs some required libraries
+
 ## Getting Started
 
 * Clone the repository
