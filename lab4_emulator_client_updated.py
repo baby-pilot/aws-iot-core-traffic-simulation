@@ -4,12 +4,12 @@ import time
 import json
 import pandas as pd
 import numpy as np
+import settings
 
+# number of devices
+device_count = settings.DEVICE_COUNT
 
-#TODO 1: modify the following parameters
-#Starting and end index, modify this
-device_st = 0
-device_end = 4
+TOPIC = "myTopic"
 
 #Path to the dataset, modify this
 data_path = "data/vehicle{}.csv"
@@ -26,7 +26,7 @@ class MQTTClient:
         self.state = 0
         self.client = AWSIoTMQTTClient(self.device_id)
         #TODO 2: modify your broker address
-        self.client.configureEndpoint("anyg5t1jne32e-ats.iot.us-east-2.amazonaws.com", 8883)
+        self.client.configureEndpoint(settings.AWS_ENDPOINT, 8883)
         self.client.configureCredentials("certs/aws_root_ca.pem", key, cert)
         self.client.configureOfflinePublishQueueing(-1)  # Infinite offline Publish queueing
         self.client.configureDrainingFrequency(2)  # Draining: 2 Hz
@@ -35,9 +35,15 @@ class MQTTClient:
         self.client.onMessage = self.customOnMessage
         
 
-    def customOnMessage(self,message):
-        #TODO3: fill in the function to show your received message
-        print("client {} received payload {} from topic {}".format(self.device_id, message.payload, message.topic))
+    def customOnMessage(self, *args):
+        # inconsistency in how customOnMessage is called, varying number of args
+        # Extract the message object from the arguments. Assume it is always last arg
+        message = args[-1]
+        # decode byte string, since MQTT is a binary protocol
+        message_payload = json.loads(message.payload.decode('utf-8'))
+        print(message)
+        print(message.topic)
+        print("client {} received message {} from topic {}".format(self.device_id, message_payload.get("message"), message.topic))
 
 
     # Suback callback
@@ -51,35 +57,47 @@ class MQTTClient:
         #You don't need to write anything here
         pass
 
+    def subscribe(self, topic):
+        self.client.subscribe(topic, settings.QUALITY_OF_SERVICE, self.customOnMessage)
 
-    def publish(self, Payload="payload"):
+
+    def publish(self, message="kek", device_id=0):
         #TODO4: fill in this function for your publish
-        self.client.subscribeAsync("myTopic", 0, ackCallback=self.customSubackCallback)
+        self.client.subscribeAsync(TOPIC, settings.QUALITY_OF_SERVICE, ackCallback=self.customSubackCallback)
         
-        self.client.publishAsync("myTopic", Payload, 0, ackCallback=self.customPubackCallback)
+        self.client.publishAsync(TOPIC, self.craftPayload(message), settings.QUALITY_OF_SERVICE, ackCallback=self.customPubackCallback)
+    
+    def craftPayload(self, message):
+        # This function generates a json payload
+        data = {
+            "message": message,
+            "device_id": self.device_id
+        }
+        print(json.dumps(data).encode("utf-8"))
+        return json.dumps(data)
 
 
 
 print("Loading vehicle data...")
 data = []
-for i in range(5):
+for i in range(device_count):
     a = pd.read_csv(data_path.format(i))
     data.append(a)
 
 print("Initializing MQTTClients...")
 clients = []
-for device_id in range(device_st, device_end):
+for device_id in range(device_count):
     client = MQTTClient(device_id,certificate_formatter.format(device_id,device_id) ,key_formatter.format(device_id,device_id))
     client.client.connect()
+    client.subscribe(TOPIC)
     clients.append(client)
- 
 
 while True:
-    print("send now?")
+    print("send now? s/d")
     x = input()
     if x == "s":
         for i,c in enumerate(clients):
-            c.publish()
+            c.publish(device_id=i)
 
     elif x == "d":
         for c in clients:
