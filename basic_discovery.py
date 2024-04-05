@@ -1,188 +1,130 @@
-# /*
-# * Copyright 2010-2017 Amazon.com, Inc. or its affiliates. All Rights Reserved.
-# *
-# * Licensed under the Apache License, Version 2.0 (the "License").
-# * You may not use this file except in compliance with the License.
-# * A copy of the License is located at
-# *
-# *  http://aws.amazon.com/apache2.0
-# *
-# * or in the "license" file accompanying this file. This file is distributed
-# * on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
-# * express or implied. See the License for the specific language governing
-# * permissions and limitations under the License.
-# */
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: Apache-2.0.
 
-
-import os
-import sys
 import time
-import uuid
 import json
-import logging
-import argparse
-from AWSIoTPythonSDK.core.greengrass.discovery.providers import DiscoveryInfoProvider
-from AWSIoTPythonSDK.core.protocol.connection.cores import ProgressiveBackOffCore
-from AWSIoTPythonSDK.MQTTLib import AWSIoTMQTTClient
-from AWSIoTPythonSDK.exception.AWSIoTExceptions import DiscoveryInvalidRequestException
+import csv
 
-AllowedActions = ['both', 'publish', 'subscribe']
+from awscrt import io, http
+from awscrt.mqtt import QoS
+from awsiot.greengrass_discovery import DiscoveryClient
+from awsiot import mqtt_connection_builder
 
-# General message notification callback
-def customOnMessage(message):
-    print('Received message on topic %s: %s\n' % (message.topic, message.payload))
+from utils.command_line_utils import CommandLineUtils
 
-MAX_DISCOVERY_RETRIES = 10
-GROUP_CA_PATH = "./groupCA/"
+allowed_actions = ['both', 'publish', 'subscribe']
 
-# Read in command-line parameters
-parser = argparse.ArgumentParser()
-parser.add_argument("-e", "--endpoint", action="store", required=True, dest="host", help="Your AWS IoT custom endpoint")
-parser.add_argument("-r", "--rootCA", action="store", required=True, dest="rootCAPath", help="Root CA file path")
-parser.add_argument("-c", "--cert", action="store", dest="certificatePath", help="Certificate file path")
-parser.add_argument("-k", "--key", action="store", dest="privateKeyPath", help="Private key file path")
-parser.add_argument("-n", "--thingName", action="store", dest="thingName", default="Bot", help="Targeted thing name")
-parser.add_argument("-t", "--topic", action="store", dest="topic", default="sdk/test/Python", help="Targeted topic")
-parser.add_argument("-m", "--mode", action="store", dest="mode", default="both",
-                    help="Operation modes: %s"%str(AllowedActions))
-parser.add_argument("-M", "--message", action="store", dest="message", default="Hello World!",
-                    help="Message to publish")
-#--print_discover_resp_only used for delopyment testing. The test run will return 0 as long as the SDK installed correctly.
-parser.add_argument("-p", "--print_discover_resp_only", action="store_true", dest="print_only", default=False)
+# cmdData is the arguments/input from the command line placed into a single struct for
+# use in this sample. This handles all of the command line parsing, validating, etc.
+# See the Utils/CommandLineUtils for more information.
+cmdData = CommandLineUtils.parse_sample_input_basic_discovery()
 
-args = parser.parse_args()
-host = args.host
-rootCAPath = args.rootCAPath
-certificatePath = args.certificatePath
-privateKeyPath = args.privateKeyPath
-clientId = args.thingName
-thingName = args.thingName
-topic = args.topic
-print_only = args.print_only
+tls_options = io.TlsContextOptions.create_client_with_mtls_from_path(cmdData.input_cert, cmdData.input_key)
+if (cmdData.input_ca is not None):
+    tls_options.override_default_trust_store_from_path(None, cmdData.input_ca)
+tls_context = io.ClientTlsContext(tls_options)
 
-if args.mode not in AllowedActions:
-    parser.error("Unknown --mode option %s. Must be one of %s" % (args.mode, str(AllowedActions)))
-    exit(2)
+socket_options = io.SocketOptions()
 
-if not args.certificatePath or not args.privateKeyPath:
-    parser.error("Missing credentials for authentication, you must specify --cert and --key args.")
-    exit(2)
+proxy_options = None
+if cmdData.input_proxy_host is not None and cmdData.input_proxy_port != 0:
+    proxy_options = http.HttpProxyOptions(cmdData.input_proxy_host, cmdData.input_proxy_port)
 
-if not os.path.isfile(rootCAPath):
-    parser.error("Root CA path does not exist {}".format(rootCAPath))
-    exit(3)
+print('Performing greengrass discovery...')
+discovery_client = DiscoveryClient(
+    io.ClientBootstrap.get_or_create_static_default(),
+    socket_options,
+    tls_context,
+    cmdData.input_signing_region, None, proxy_options)
+resp_future = discovery_client.discover(cmdData.input_thing_name)
+discover_response = resp_future.result()
 
-if not os.path.isfile(certificatePath):
-    parser.error("No certificate found at {}".format(certificatePath))
-    exit(3)
+if (cmdData.input_is_ci):
+    print("Received a greengrass discovery result! Not showing result in CI for possible data sensitivity.")
+else:
+    print(discover_response)
 
-if not os.path.isfile(privateKeyPath):
-    parser.error("No private key found at {}".format(privateKeyPath))
-    exit(3)
+if (cmdData.input_print_discovery_resp_only):
+    exit(0)
 
-# Configure logging
-logger = logging.getLogger("AWSIoTPythonSDK.core")
-logger.setLevel(logging.DEBUG)
-streamHandler = logging.StreamHandler()
-formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-streamHandler.setFormatter(formatter)
-logger.addHandler(streamHandler)
 
-# Progressive back off core
-backOffCore = ProgressiveBackOffCore()
+def on_connection_interupted(connection, error, **kwargs):
+    print('connection interrupted with error {}'.format(error))
 
-# Discover GGCs
-discoveryInfoProvider = DiscoveryInfoProvider()
-discoveryInfoProvider.configureEndpoint(host)
-discoveryInfoProvider.configureCredentials(rootCAPath, certificatePath, privateKeyPath)
-discoveryInfoProvider.configureTimeout(10)  # 10 sec
 
-retryCount = MAX_DISCOVERY_RETRIES if not print_only else 1
-discovered = False
-groupCA = None
-coreInfo = None
-while retryCount != 0:
-    try:
-        discoveryInfo = discoveryInfoProvider.discover(thingName)
-        caList = discoveryInfo.getAllCas()
-        coreList = discoveryInfo.getAllCores()
+def on_connection_resumed(connection, return_code, session_present, **kwargs):
+    print('connection resumed with return code {}, session present {}'.format(return_code, session_present))
 
-        # We only pick the first ca and core info
-        groupId, ca = caList[0]
-        coreInfo = coreList[0]
-        print("Discovered GGC: %s from Group: %s" % (coreInfo.coreThingArn, groupId))
 
-        print("Now we persist the connectivity/identity information...")
-        groupCA = GROUP_CA_PATH + groupId + "_CA_" + str(uuid.uuid4()) + ".crt"
-        if not os.path.exists(GROUP_CA_PATH):
-            os.makedirs(GROUP_CA_PATH)
-        groupCAFile = open(groupCA, "w")
-        groupCAFile.write(ca)
-        groupCAFile.close()
+# Try IoT endpoints until we find one that works
+def try_iot_endpoints():
+    for gg_group in discover_response.gg_groups:
+        for gg_core in gg_group.cores:
+            for connectivity_info in gg_core.connectivity:
+                try:
+                    print(
+                        f"Trying core {gg_core.thing_arn} at host {connectivity_info.host_address} port {connectivity_info.port}")
+                    mqtt_connection = mqtt_connection_builder.mtls_from_path(
+                        endpoint=connectivity_info.host_address,
+                        port=connectivity_info.port,
+                        cert_filepath=cmdData.input_cert,
+                        pri_key_filepath=cmdData.input_key,
+                        ca_bytes=gg_group.certificate_authorities[0].encode('utf-8'),
+                        on_connection_interrupted=on_connection_interupted,
+                        on_connection_resumed=on_connection_resumed,
+                        client_id=cmdData.input_thing_name,
+                        clean_session=False,
+                        keep_alive_secs=30)
 
-        discovered = True
-        print("Now proceed to the connecting flow...")
-        break
-    except DiscoveryInvalidRequestException as e:
-        print("Invalid discovery request detected!")
-        print("Type: %s" % str(type(e)))
-        print("Error message: %s" % str(e))
-        print("Stopping...")
-        break
-    except BaseException as e:
-        print("Error in discovery!")
-        print("Type: %s" % str(type(e)))
-        print("Error message: %s" % str(e))
-        retryCount -= 1
-        print("\n%d/%d retries left\n" % (retryCount, MAX_DISCOVERY_RETRIES))
-        print("Backing off...\n")
-        backOffCore.backOff()
+                    connect_future = mqtt_connection.connect()
+                    connect_future.result()
+                    print('Connected!')
+                    return mqtt_connection
 
-if not discovered:
-    # With print_discover_resp_only flag, we only woud like to check if the API get called correctly. 
-    if print_only:
-        sys.exit(0)
-    print("Discovery failed after %d retries. Exiting...\n" % (MAX_DISCOVERY_RETRIES))
-    sys.exit(-1)
+                except Exception as e:
+                    print('Connection failed with exception {}'.format(e))
+                    continue
 
-# Iterate through all connection options for the core and use the first successful one
-myAWSIoTMQTTClient = AWSIoTMQTTClient(clientId)
-myAWSIoTMQTTClient.configureCredentials(groupCA, privateKeyPath, certificatePath)
-myAWSIoTMQTTClient.onMessage = customOnMessage
+    exit('All connection attempts failed')
 
-connected = False
-for connectivityInfo in coreInfo.connectivityInfoList:
-    currentHost = connectivityInfo.host
-    currentPort = connectivityInfo.port
-    print("Trying to connect to core at %s:%d" % (currentHost, currentPort))
-    myAWSIoTMQTTClient.configureEndpoint(currentHost, currentPort)
-    try:
-        myAWSIoTMQTTClient.connect()
-        connected = True
-        break
-    except BaseException as e:
-        print("Error in connect!")
-        print("Type: %s" % str(type(e)))
-        print("Error message: %s" % str(e))
+def read_csv_data(csv_file_path):
+    with open(csv_file_path, 'r') as file:
+	    reader = csv.reader(file)
+	    csv_data = [row for row in reader]
+    return csv_data
 
-if not connected:
-    print("Cannot connect to core %s. Exiting..." % coreInfo.coreThingArn)
-    sys.exit(-2)
 
-# Successfully connected to the core
-if args.mode == 'both' or args.mode == 'subscribe':
-    myAWSIoTMQTTClient.subscribe(topic, 0, None)
-time.sleep(2)
 
-loopCount = 0
-while True:
-    if args.mode == 'both' or args.mode == 'publish':
+
+mqtt_connection = try_iot_endpoints()
+
+if cmdData.input_mode == 'both' or cmdData.input_mode == 'subscribe':
+#    print("will try to subscribe as well to ", cmdData.input_thing_name)
+    def on_publish(topic, payload, dup, qos, retain, **kwargs):
+        print(f"Publish received on topic {topic}: \n    {payload}")
+#    subscribe_future, _ = mqtt_connection.subscribe(cmdData.input_topic, QoS.AT_MOST_ONCE, on_publish)
+#    subscribe_result = subscribe_future.result()
+    subscribe_future, _ = mqtt_connection.subscribe(f"clients/{cmdData.input_thing_name}/max_co2", QoS.AT_MOST_ONCE, on_publish)
+    subscribe_result = subscribe_future.result()
+
+loop_count = 0
+while loop_count < 3:
+#while loop_count < cmdData.input_max_pub_ops:
+    if cmdData.input_mode == 'both' or cmdData.input_mode == 'publish':
+        csv_file_path = cmdData.input_message
+        csv_data = read_csv_data(csv_file_path)
         message = {}
-        message['message'] = args.message
-        message['sequence'] = loopCount
+        message['csv_data'] = csv_data
+        message['sequence'] = loop_count
+        message['topic'] = cmdData.input_topic
+        message['thingName'] = cmdData.input_thing_name
         messageJson = json.dumps(message)
-        myAWSIoTMQTTClient.publish(topic, messageJson, 0)
-        if args.mode == 'publish':
-            print('Published topic %s: %s\n' % (topic, messageJson))
-        loopCount += 1
+        pub_future, _ = mqtt_connection.publish(cmdData.input_topic, messageJson, QoS.AT_MOST_ONCE)
+        pub_future.result()
+        print('Published topic {}\n'.format(cmdData.input_topic, messageJson))
+
+        loop_count += 1
     time.sleep(1)
+
+print("listening to subscribed topics....")
+#time.sleep(5)
