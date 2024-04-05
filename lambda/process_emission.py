@@ -4,11 +4,6 @@ import sys
 
 import greengrasssdk
 
-# number of devices
-device_count = settings.DEVICE_COUNT
-#Path to the dataset, modify this
-data_path = "data/vehicle{}.csv"
-
 # Logging
 logger = logging.getLogger(__name__)
 logging.basicConfig(stream=sys.stdout, level=logging.DEBUG)
