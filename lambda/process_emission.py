@@ -15,7 +15,7 @@ client = greengrasssdk.client("iot-data")
 device_count = 5
 max_co2 = [0] * device_count
 my_counter = 0
-base_topic = "data/max/co2"
+base_topic = "data/receive/co2"
 
 def lambda_handler(event, context):
     global my_counter
@@ -31,7 +31,7 @@ def lambda_handler(event, context):
     payload = {
         "seq_no": my_counter,
         "device_id": device_id, 
-        "co2_reading": co2_reading if co2_reading > max_co2[device_id] else max_co2[device_id] 
+        "co2_reading": max(co2_reading,  max_co2[device_id])
     }
 
     client.publish(
