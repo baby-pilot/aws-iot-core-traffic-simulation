@@ -28,15 +28,18 @@ def lambda_handler(event, context):
         logger.error("Missing device_id or co2_reading in the event.")
         return
     
+    max_co2[device_id] = max(co2_reading,  max_co2[device_id])
+    logger.info(max_co2)
     payload = {
         "seq_no": my_counter,
         "device_id": device_id, 
-        "co2_reading": max(co2_reading,  max_co2[device_id])
+        "co2_reading": max_co2[device_id]
     }
+    logger.info(payload)
 
     client.publish(
         topic=base_topic,
-        payload=payload,
+        payload=json.dumps(payload),
     )
     my_counter += 1
 

@@ -48,7 +48,7 @@ class MQTTClient:
         
         # print(message)
         # print(message.topic)
-        print("client {} received data {} from topic {}".format(self.device_id, message_payload.get("data"), message.topic))
+        print("client {} received max reading {} from topic {}".format(self.device_id, message_payload.get("co2_reading"), message.topic))
 
 
     # Suback callback
@@ -77,7 +77,7 @@ class MQTTClient:
         # This function generates a json payload
         payload = {
             "co2_reading": co2_reading,
-            "device_id": self.device_id
+            "device_id": int(self.device_id)
         }
         # print(json.dumps(payload).encode("utf-8"))
         return json.dumps(payload)
