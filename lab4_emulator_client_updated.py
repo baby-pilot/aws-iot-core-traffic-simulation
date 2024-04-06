@@ -99,6 +99,11 @@ for device_id in range(device_count):
     client.subscribe(SUBSCRIBE_TOPIC)
     clients.append(client)
 
+"""
+The below program allows us to send in one row at a time to the cloud, activated by key press, corresponding to device ID
+The cloud (lambda at the edge) returns the maximum CO2 levels encountered thus far for the respective car (i.e. device ID)
+Once the max number of rows is reached for a car, it starts to loop from zero again. This simulates a continuous data stream from the car.
+"""
 counter = [0] * 5
 while True:
     print("Enter device id to simulate. Or press d to exit simulation.")
