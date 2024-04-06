@@ -9,7 +9,8 @@ import settings
 # number of devices
 device_count = settings.DEVICE_COUNT
 
-TOPIC = "myTopic"
+PUBLISH_TOPIC = "data/send/co2"
+SUBSCRIBE_TOPIC = "data/receive/co2"
 
 #Path to the dataset, modify this
 data_path = "data/vehicle{}.csv"
@@ -77,7 +78,7 @@ class MQTTClient:
         return json.dumps(data)
 
 
-
+#TODO: wrap this into a function that only creates the data for 1 car (parameter)
 print("Loading vehicle data...")
 data = []
 for i in range(device_count):
@@ -89,16 +90,18 @@ clients = []
 for device_id in range(device_count):
     client = MQTTClient(device_id,certificate_formatter.format(device_id,device_id) ,key_formatter.format(device_id,device_id))
     client.client.connect()
-    client.subscribe(TOPIC)
+    client.subscribe(SUBSCRIBE_TOPIC)
     clients.append(client)
 
 while True:
-    print("send now? s/d")
+    print("Enter device id to simulate. Or press d to exit simulation.")
     x = input()
-    if x == "s":
-        for i,c in enumerate(clients):
-            c.publish(device_id=i)
-
+    if x.isdigit():
+        if (x:=int(x)) in range(device_count):
+            clients[x].publish(device_id=x)
+        else:
+            print("Not a valid device")
+            continue
     elif x == "d":
         for c in clients:
             c.client.disconnect()
