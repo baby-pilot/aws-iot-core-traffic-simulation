@@ -42,9 +42,13 @@ class MQTTClient:
         message = args[-1]
         # decode byte string, since MQTT is a binary protocol
         message_payload = json.loads(message.payload.decode('utf-8'))
-        print(message)
-        print(message.topic)
-        print("client {} received message {} from topic {}".format(self.device_id, message_payload.get("message"), message.topic))
+        # ignore messages not destined self
+        if self.device_id != str(message_payload.get("device_id")):
+            return
+        
+        # print(message)
+        # print(message.topic)
+        print("client {} received data {} from topic {}".format(self.device_id, message_payload.get("data"), message.topic))
 
 
     # Suback callback
@@ -59,23 +63,24 @@ class MQTTClient:
         pass
 
     def subscribe(self, topic):
-        self.client.subscribe(topic, settings.QUALITY_OF_SERVICE, self.customOnMessage)
+        # self.client.subscribe(topic, settings.QUALITY_OF_SERVICE, self.customOnMessage)
+        self.client.subscribeAsync(topic, settings.QUALITY_OF_SERVICE, ackCallback=self.customSubackCallback)
 
 
     def publish(self, message="kek", device_id=0):
         #TODO4: fill in this function for your publish
-        self.client.subscribeAsync(TOPIC, settings.QUALITY_OF_SERVICE, ackCallback=self.customSubackCallback)
+        # self.client.subscribeAsync(PUBLISH_TOPIC, settings.QUALITY_OF_SERVICE, ackCallback=self.customSubackCallback)
         
-        self.client.publishAsync(TOPIC, self.craftPayload(message), settings.QUALITY_OF_SERVICE, ackCallback=self.customPubackCallback)
+        self.client.publishAsync(PUBLISH_TOPIC, self.craftPayload(message), settings.QUALITY_OF_SERVICE, ackCallback=self.customPubackCallback)
     
-    def craftPayload(self, message):
+    def craftPayload(self, data):
         # This function generates a json payload
-        data = {
-            "message": message,
+        payload = {
+            "data": data,
             "device_id": self.device_id
         }
-        print(json.dumps(data).encode("utf-8"))
-        return json.dumps(data)
+        # print(json.dumps(payload).encode("utf-8"))
+        return json.dumps(payload)
 
 
 #TODO: wrap this into a function that only creates the data for 1 car (parameter)
