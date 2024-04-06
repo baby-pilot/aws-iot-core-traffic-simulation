@@ -48,7 +48,7 @@ class MQTTClient:
         
         # print(message)
         # print(message.topic)
-        print("client {} received max reading {} from topic {}".format(self.device_id, message_payload.get("co2_reading"), message.topic))
+        print("client {} received the computed current max reading {} from topic {}".format(self.device_id, message_payload.get("co2_reading"), message.topic))
 
 
     # Suback callback
