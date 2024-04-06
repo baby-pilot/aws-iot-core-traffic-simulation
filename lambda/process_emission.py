@@ -6,26 +6,38 @@ import greengrasssdk
 
 # Logging
 logger = logging.getLogger(__name__)
-logging.basicConfig(stream=sys.stdout, level=logging.DEBUG)
+logging.basicConfig(stream=sys.stdout, level=logging.INFO)
 
 # SDK Client
 client = greengrasssdk.client("iot-data")
 
 # Counter
+device_count = 5
+max_co2 = [0] * device_count
 my_counter = 0
+base_topic = "data/max/co2"
+
 def lambda_handler(event, context):
     global my_counter
-    #TODO1: Get your data
+    
+    device_id = event.get("device_id")
+    co2_reading = event.get("co2_reading")
+    logger.info("Entered the lambda")
+    
+    if device_id is None or co2_reading is None:
+        logger.error("Missing device_id or co2_reading in the event.")
+        return
+    
+    payload = {
+        "seq_no": my_counter,
+        "device_id": device_id, 
+        "co2_reading": co2_reading if co2_reading > max_co2[device_id] else max_co2[device_id] 
+    }
 
-    #TODO2: Calculate max CO2 emission
-
-    #TODO3: Return the result
     client.publish(
-        topic="hello/world/counter",
-        payload=json.dumps(
-            {"message": "Hello world! Sent from Greengrass Core.  Invocation Count: {}".format(my_counter)}
-        ),
+        topic=base_topic,
+        payload=payload,
     )
     my_counter += 1
 
-    return
+    return payload
