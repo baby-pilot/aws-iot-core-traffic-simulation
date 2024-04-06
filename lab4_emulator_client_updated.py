@@ -67,28 +67,29 @@ class MQTTClient:
         self.client.subscribeAsync(topic, settings.QUALITY_OF_SERVICE, ackCallback=self.customSubackCallback)
 
 
-    def publish(self, message="kek", device_id=0):
+    def publish(self, co2_reading):
         #TODO4: fill in this function for your publish
         # self.client.subscribeAsync(PUBLISH_TOPIC, settings.QUALITY_OF_SERVICE, ackCallback=self.customSubackCallback)
         
-        self.client.publishAsync(PUBLISH_TOPIC, self.craftPayload(message), settings.QUALITY_OF_SERVICE, ackCallback=self.customPubackCallback)
+        self.client.publishAsync(PUBLISH_TOPIC, self.craftPayload(co2_reading), settings.QUALITY_OF_SERVICE, ackCallback=self.customPubackCallback)
     
-    def craftPayload(self, data):
+    def craftPayload(self, co2_reading):
         # This function generates a json payload
         payload = {
-            "data": data,
+            "co2_reading": co2_reading,
             "device_id": self.device_id
         }
         # print(json.dumps(payload).encode("utf-8"))
         return json.dumps(payload)
+    
 
+def read_csv_row(counter, device_id):
+    data = pd.read_csv(data_path.format(device_id), header=0)
+    total_rows = len(data)
+    row_index = counter % total_rows
+    selected_row = data.iloc[row_index]
+    return selected_row['vehicle_CO2']
 
-#TODO: wrap this into a function that only creates the data for 1 car (parameter)
-print("Loading vehicle data...")
-data = []
-for i in range(device_count):
-    a = pd.read_csv(data_path.format(i))
-    data.append(a)
 
 print("Initializing MQTTClients...")
 clients = []
@@ -98,12 +99,15 @@ for device_id in range(device_count):
     client.subscribe(SUBSCRIBE_TOPIC)
     clients.append(client)
 
+counter = [0] * 5
 while True:
     print("Enter device id to simulate. Or press d to exit simulation.")
     x = input()
     if x.isdigit():
         if (x:=int(x)) in range(device_count):
-            clients[x].publish(device_id=x)
+            co2_reading = read_csv_row(counter[x], x)
+            clients[x].publish(co2_reading)
+            counter[x] += 1
         else:
             print("Not a valid device")
             continue
