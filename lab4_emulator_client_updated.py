@@ -67,17 +67,18 @@ class MQTTClient:
         self.client.subscribeAsync(topic, settings.QUALITY_OF_SERVICE, ackCallback=self.customSubackCallback)
 
 
-    def publish(self, co2_reading):
+    def publish(self, co2_reading, counter):
         #TODO4: fill in this function for your publish
         # self.client.subscribeAsync(PUBLISH_TOPIC, settings.QUALITY_OF_SERVICE, ackCallback=self.customSubackCallback)
         
-        self.client.publishAsync(PUBLISH_TOPIC, self.craftPayload(co2_reading), settings.QUALITY_OF_SERVICE, ackCallback=self.customPubackCallback)
+        self.client.publishAsync(PUBLISH_TOPIC, self.craftPayload(co2_reading, counter), settings.QUALITY_OF_SERVICE, ackCallback=self.customPubackCallback)
     
-    def craftPayload(self, co2_reading):
+    def craftPayload(self, co2_reading, counter):
         # This function generates a json payload
         payload = {
             "co2_reading": co2_reading,
-            "device_id": int(self.device_id)
+            "device_id": int(self.device_id),
+            "timestep_time": counter
         }
         # print(json.dumps(payload).encode("utf-8"))
         return json.dumps(payload)
@@ -89,6 +90,10 @@ def read_csv_row(counter, device_id):
     row_index = counter % total_rows
     selected_row = data.iloc[row_index]
     return selected_row['vehicle_CO2']
+
+def get_total_rows(device_id):
+    data = pd.read_csv(data_path.format(device_id), header=0)
+    return len(data)
 
 
 print("Initializing MQTTClients...")
@@ -110,9 +115,10 @@ while True:
     x = input()
     if x.isdigit():
         if (x:=int(x)) in range(device_count):
-            co2_reading = read_csv_row(counter[x], x)
-            clients[x].publish(co2_reading)
-            counter[x] += 1
+            for _ in range(get_total_rows(device_id)):
+                co2_reading = read_csv_row(counter[x], x)
+                clients[x].publish(co2_reading, counter[x])
+                counter[x] += 1
         else:
             print("Not a valid device")
             continue
